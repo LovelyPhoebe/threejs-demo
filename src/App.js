@@ -9,12 +9,14 @@ import { useBase } from "./hook/useBase";
 import { useZhenlie } from "./hook/useZhenlie";
 import { useBufferGeom } from "./hook/useBufferGeom";
 import { useLine } from "./hook/useLine";
+import { useInte } from "./hook/useInte";
 
 function App() {
   // useBase();
   // useZhenlie()
   // useBufferGeom()
-  useLine()
+  useInte()
+  // useLine()
   return <div className="App" id="app"></div>;
 }
 

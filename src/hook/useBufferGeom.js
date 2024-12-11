@@ -22,19 +22,20 @@ export function useBufferGeom() {
     geometry.attributes.position = attribute;
 
     // 点渲染模式
-    // const material = new THREE.PointsMaterial({
-    //     color: 0xffff00,
-    //     size: 5 //点对象像素尺寸
-    // }); 
+    const material = new THREE.PointsMaterial({
+        color: 0xffff00,
+        size: 5 //点对象像素尺寸
+    }); 
 
-    // const mesh = new THREE.Points(geometry, material)
+    const mesh = new THREE.Points(geometry, material)
+    scene.add(mesh)
 
     // 线渲染模式
-    const material = new THREE.LineBasicMaterial({
-        color: 0xff0000 //线条颜色
-    })
-    const line = new THREE.Line(geometry, material)
-    scene.add(line)
+    // const material = new THREE.LineBasicMaterial({
+    //     color: 0xff0000 //线条颜色
+    // })
+    // const line = new THREE.Line(geometry, material)
+    // scene.add(line)
     const width = window.innerWidth; //宽度
     const height = window.innerHeight; //高度
     const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 8000);
@@ -54,12 +55,12 @@ export function useBufferGeom() {
     renderer.render(scene, camera);
     const axesHelper = new THREE.AxesHelper(150);
     scene.add(axesHelper);
-    const ambient = new THREE.AmbientLight(0xffffff, 0.4);
-    scene.add(ambient);
-    console.log("ambient.intensity", ambient.intensity);
-    // const pointLight = new THREE.PointLight(0xffffff, 1.0);
-    // pointLight.position.set(800, 800, 800);
-    // scene.add(pointLight);
+    // const ambient = new THREE.AmbientLight(0xffffff, 0.4);
+    // scene.add(ambient);
+    // console.log("ambient.intensity", ambient.intensity);
+    const pointLight = new THREE.PointLight(0xffffff, 1.0);
+    pointLight.position.set(800, 800, 800);
+    scene.add(pointLight);
     document.body.appendChild(renderer.domElement);
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.addEventListener("change", () => {
