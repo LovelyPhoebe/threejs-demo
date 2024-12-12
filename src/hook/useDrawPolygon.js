@@ -4,7 +4,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GUI } from "three/addons/libs/lil-gui.module.min.js";
 import earcut from "earcut";
 
-export function useDrawPolygon({ topDown }) {
+export function useDrawPolygon({ topDown, rotate }) {
   const sceneRef = useRef();
   const cameraRef = useRef();
   const renderRef = useRef();
@@ -20,6 +20,7 @@ export function useDrawPolygon({ topDown }) {
   const gridRef = useRef();
   const faceRef = useRef();
   const shapeRef = useRef();
+  const selectRef = useRef();
 
   const initGrid = () => {
     const gridDivision = 50;
@@ -32,12 +33,73 @@ export function useDrawPolygon({ topDown }) {
     gridRef.current.material.transparent = true; // 开启透明属性
   };
 
+  // 计算面的中心点
+  const calculateCenter = (vertices) => {
+    const center = new THREE.Vector3();
+    vertices.forEach((vertex) => {
+      center.add(vertex); // 累加所有顶点
+    });
+    center.divideScalar(vertices.length); // 求平均值
+    return center;
+  };
+
+  const rotateVertices = (vertices, center, angle) => {
+    const angleInRadians = THREE.MathUtils.degToRad(angle); // 将角度转为弧度
+    const cos = Math.cos(angleInRadians);
+    const sin = Math.sin(angleInRadians);
+
+    vertices.forEach((vertex) => {
+      // 将顶点平移到以中心点为原点
+      const translatedX = vertex.x - center.x;
+      const translatedY = vertex.y - center.y;
+
+      // 应用旋转矩阵
+      const rotatedX = translatedX * cos - translatedY * sin;
+      const rotatedY = translatedX * sin + translatedY * cos;
+
+      // 平移回原位置
+      vertex.x = rotatedX + center.x;
+      vertex.y = rotatedY + center.y;
+      // z 坐标保持不变
+    });
+  };
+
   // 辅助函数，用于计算两点在平面上的距离（这里简单以二维平面距离计算为例，可根据实际需求调整更精准的空间距离计算方式）
   const calculate2DDistance = (point1, point2) => {
     const dx = point1.x - point2.x;
     const dy = point1.y - point2.y;
     return Math.sqrt(dx * dx + dy * dy);
   };
+
+  useEffect(() => {
+    if (rotate && selectRef.current) {
+      //   const positionArr = selectRef.current.geometry.attributes.position.array;
+      //   const vertices = [];
+      //   for (let i = 0; i < positionArr.length; i += 3) {
+      //     const x = positionArr[i * 3];
+      //     const y = positionArr[i * 3 + 1];
+      //     const z = positionArr[i * 3 + 2];
+      //     vertices.push(new THREE.Vector3(x, y, z));
+      //   }
+      //   const center = calculateCenter(vertices);
+      //   console.log("center = ", center, vertices);
+      //   debugger
+      //   rotateVertices(vertices, center, rotate);
+      //   console.log("vertices = ", vertices)
+      //   debugger
+      //   //   redrawGeometry(selectRef.current.geometry, vertices);
+      //   drawPolygon(vertices);
+      // 将几何体的中心点移动到 (0, 0, 0)
+      selectRef.current.geometry.center();
+
+      // 然后直接旋转
+      const angleInRadians = THREE.MathUtils.degToRad(45); // 旋转角度，单位为弧度
+      selectRef.current.rotation.z += angleInRadians;
+
+      // 如果需要反复渲染
+      selectRef.current.updateMatrixWorld(); // 更新矩阵
+    }
+  }, [rotate]);
 
   // 控制2d 3d是否可编辑
   useEffect(() => {
@@ -134,6 +196,23 @@ export function useDrawPolygon({ topDown }) {
       pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
       pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
       console.log("click = ", event);
+
+      // 检查是否点击到面(多面，此只选0)
+      const faces = sceneRef.current.children.filter(
+        (obj) => obj.userData.type === "face"
+      );
+      const faceIntersects = raycasterRef.current.intersectObjects(faces);
+      console.log("faces = ", faces);
+
+      // 如果点击到了面，打印该面的信息
+      if (faceIntersects.length > 0) {
+        const intersectedFace = faceIntersects[0].object;
+        console.log("Clicked face: ", intersectedFace.userData, faces);
+        selectRef.current = faces[0];
+        const position = faces[0].geometry.attributes.position;
+        console.log("Clicked position: ", position);
+        return;
+      }
       // 投射到平面上
       raycasterRef.current.setFromCamera(pointer, cameraRef.current);
       const intersects = raycasterRef.current.intersectObject(planeRef.current);
@@ -226,7 +305,7 @@ export function useDrawPolygon({ topDown }) {
     shapeRef.current.moveTo(vertices[0].x, vertices[0].y);
     // 连接其他点
     for (let i = 1; i < vertices.length; i++) {
-        shapeRef.current.lineTo(vertices[i].x, vertices[i].y);
+      shapeRef.current.lineTo(vertices[i].x, vertices[i].y);
     }
 
     // 闭合路径
@@ -240,8 +319,9 @@ export function useDrawPolygon({ topDown }) {
       opacity: 0.5, // 设置透明度
     });
 
-    const faceMesh = new THREE.Mesh(geometry, material);
-    sceneRef.current.add(faceMesh);
+    faceRef.current = new THREE.Mesh(geometry, material);
+    faceRef.current.userData.type = "face";
+    sceneRef.current.add(faceRef.current);
   };
 
   // 绘制多边形
@@ -252,6 +332,7 @@ export function useDrawPolygon({ topDown }) {
     );
     // 绘制点
     vertices.forEach((vertex) => {
+      console.log("vertex = ", vertex, vertex.x);
       const pointGeometry = new THREE.SphereGeometry(5, 16, 16); // 小球表示点
       const pointMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 }); // 黄色材质
       const pointMesh = new THREE.Mesh(pointGeometry, pointMaterial);
@@ -276,7 +357,7 @@ export function useDrawPolygon({ topDown }) {
 
     // 创建面的几何体
     //   drawFaceByEarCut(vertices);
-    drawFaceByShape(vertices)
+    drawFaceByShape(vertices);
     console.log("sceneRef.current = ", sceneRef.current.children);
   };
 }
