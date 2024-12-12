@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GUI } from "three/addons/libs/lil-gui.module.min.js";
+import earcut from "earcut";
 
 export function useDrawPolygon({ topDown }) {
   const sceneRef = useRef();
@@ -15,6 +16,20 @@ export function useDrawPolygon({ topDown }) {
   const lineRef = useRef();
   const guiRef = useRef();
   const isTopDownRef = useRef();
+  const size = 500;
+  const gridRef = useRef();
+  const faceRef = useRef();
+
+  const initGrid = () => {
+    const gridDivision = 50;
+    const gridColor = 0x888888; // 网格颜色
+    gridRef.current = new THREE.GridHelper(size, gridDivision, gridColor);
+    sceneRef.current.add(gridRef.current);
+    // 旋转到xz平面
+    gridRef.current.rotation.x = Math.PI / 2;
+    gridRef.current.material.opacity = 0.2; // 设置网格透明度为0.5，可根据实际情况调整该值
+    gridRef.current.material.transparent = true; // 开启透明属性
+  };
 
   // 辅助函数，用于计算两点在平面上的距离（这里简单以二维平面距离计算为例，可根据实际需求调整更精准的空间距离计算方式）
   const calculate2DDistance = (point1, point2) => {
@@ -75,8 +90,8 @@ export function useDrawPolygon({ topDown }) {
     renderRef.current.setClearColor(0x444444, 1);
     document.body.appendChild(renderRef.current.domElement);
 
-    // 坐标西安
-    const axesHelper = new THREE.AxesHelper(150);
+    // 坐标系
+    const axesHelper = new THREE.AxesHelper(size / 2);
     sceneRef.current.add(axesHelper);
 
     // 添加光源
@@ -84,17 +99,18 @@ export function useDrawPolygon({ topDown }) {
     sceneRef.current.add(ambientLight);
 
     // 创建辅助平面 (z=0)
-    const planeGeometry = new THREE.PlaneGeometry(500, 500);
+    const planeGeometry = new THREE.PlaneGeometry(size, size);
     const planeMaterial = new THREE.MeshBasicMaterial({
-      color: 0x00ff00,
-      side: THREE.DoubleSide,
+      color: 0xffffff,
+      side: THREE.FrontSide,
       transparent: true,
-      opacity: 0.2,
+      opacity: 0,
     });
-    const plane = new THREE.Mesh(planeGeometry, planeMaterial);
-    // plane.rotateX(-Math.PI / 2); // 将平面水平放置
-    planeRef.current = plane;
-    sceneRef.current.add(plane);
+    planeRef.current = new THREE.Mesh(planeGeometry, planeMaterial);
+    planeRef.current.visible = true;
+    sceneRef.current.add(planeRef.current);
+
+    initGrid();
 
     // 动画循环
     const animate = () => {
@@ -170,10 +186,9 @@ export function useDrawPolygon({ topDown }) {
   // 绘制多边形
   const drawPolygon = (vertices) => {
     // 清除之前的多边形
-    sceneRef.current.children = sceneRef.current.children.filter(
-      (obj) => obj.type !== "Mesh" || obj !== planeRef.current
-    );
-
+    // sceneRef.current.children = sceneRef.current.children.filter(
+    //   (obj) => obj.type !== "Mesh" || obj.userData?.type === "point"
+    // );
     // 绘制点
     vertices.forEach((vertex) => {
       const pointGeometry = new THREE.SphereGeometry(5, 16, 16); // 小球表示点
@@ -186,6 +201,7 @@ export function useDrawPolygon({ topDown }) {
 
     // 绘制线
     if (vertices.length < 2) return;
+    // console.log("vertices = ", vertices);
 
     const lineMaterial = new THREE.LineBasicMaterial({ color: "0xffffff" });
     const planeVerticles = vertices.map(
@@ -196,5 +212,40 @@ export function useDrawPolygon({ topDown }) {
     );
     lineRef.current = new THREE.Line(lineGeometry, lineMaterial);
     sceneRef.current.add(lineRef.current);
+
+    if (vertices.length > 2) {
+      // 创建面的几何体
+      const flatVertices = vertices.reduce(
+        (acc, vertex) => acc.concat([vertex.x, vertex.y]),
+        []
+      );
+      const indices = earcut(flatVertices); // 获取顶点索引
+
+    //   console.log("indices = ", indices);
+    //   console.log("flatVertices = ", flatVertices);
+
+      const positionArray = new Float32Array((flatVertices.length * 3) / 2); // 获取一个三维点位的数组（填充z）
+      for (let i = 0; i < flatVertices.length; i += 2) {
+        positionArray[(i / 2) * 3] = flatVertices[i];
+        positionArray[(i / 2) * 3 + 1] = flatVertices[i + 1];
+        positionArray[(i / 2) * 3 + 2] = 0; // z平面
+      }
+      console.log("positionArray = ", positionArray);
+
+      const faceGeometry = new THREE.BufferGeometry();
+      faceGeometry.setAttribute(
+        "position",
+        new THREE.Float32BufferAttribute(positionArray, 3)
+      );
+      faceGeometry.setIndex(indices);
+      const faceMaterial = new THREE.MeshBasicMaterial({
+        color: "0xff0000",
+        side: THREE.DoubleSide,
+      });
+      faceRef.current = new THREE.Mesh(faceGeometry, faceMaterial);
+      faceRef.current.userData.type = "face";
+      sceneRef.current.add(faceRef.current);
+    }
+    // console.log("sceneRef.current = ", sceneRef.current.children);
   };
 }

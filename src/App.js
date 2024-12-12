@@ -26,7 +26,7 @@ function App() {
     <div className="App" id="app">
       <div className="btn">
         <Button onClick={() => setTopDown((pre) => !pre)} type="primary">
-          {topDown ? "俯视图" : "3D空间"}
+          {topDown ? "3D空间" : "俯视图"}
         </Button>
       </div>
     </div>
