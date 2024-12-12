@@ -19,6 +19,7 @@ export function useDrawPolygon({ topDown }) {
   const size = 500;
   const gridRef = useRef();
   const faceRef = useRef();
+  const shapeRef = useRef();
 
   const initGrid = () => {
     const gridDivision = 50;
@@ -141,18 +142,19 @@ export function useDrawPolygon({ topDown }) {
         const point = intersects[0].point; // 获取交点
         setPoints((prevPoints) => {
           const updatedPoints = [...prevPoints, point];
-          const currentLength = updatedPoints.length;
-          if (currentLength >= 2) {
-            const firstPoint = updatedPoints[0];
-            const lastPoint = updatedPoints[currentLength - 1];
-            const distance = calculate2DDistance(lastPoint, firstPoint);
-            if (distance <= 10) {
-              // 如果距离小于等于10像素，让最后一个点坐标等于第一个点坐标，实现闭合
-              updatedPoints[currentLength - 1] = {
-                ...firstPoint,
-              };
-            }
-          }
+          // threejs生成面不需要自行判断闭合点,此逻辑可以先行不用
+          //   const currentLength = updatedPoints.length;
+          //   if (currentLength >= 2) {
+          //     const firstPoint = updatedPoints[0];
+          //     const lastPoint = updatedPoints[currentLength - 1];
+          //     const distance = calculate2DDistance(lastPoint, firstPoint);
+          //     if (distance <= 10) {
+          //       // 如果距离小于等于10像素，让最后一个点坐标等于第一个点坐标，实现闭合
+          //       updatedPoints[currentLength - 1] = {
+          //         ...firstPoint,
+          //       };
+          //     }
+          //   }
           return updatedPoints; // 更新顶点列表
         });
       }
@@ -183,12 +185,71 @@ export function useDrawPolygon({ topDown }) {
     drawPolygon(points); // 更新多边形
   }, [points]);
 
+  const drawFaceByEarCut = (vertices) => {
+    if (vertices.length <= 2) return;
+    const flatVertices = vertices.reduce(
+      (acc, vertex) => acc.concat([vertex.x, vertex.y]),
+      []
+    );
+    const indices = earcut(flatVertices); // 获取顶点索引
+
+    //   console.log("indices = ", indices);
+    //   console.log("flatVertices = ", flatVertices);
+
+    const positionArray = new Float32Array((flatVertices.length * 3) / 2); // 获取一个三维点位的数组（填充z）
+    for (let i = 0; i < flatVertices.length; i += 2) {
+      positionArray[(i / 2) * 3] = flatVertices[i];
+      positionArray[(i / 2) * 3 + 1] = flatVertices[i + 1];
+      positionArray[(i / 2) * 3 + 2] = 0; // z平面
+    }
+    // console.log("positionArray = ", positionArray);
+
+    const faceGeometry = new THREE.BufferGeometry();
+    faceGeometry.setAttribute(
+      "position",
+      new THREE.Float32BufferAttribute(positionArray, 3)
+    );
+    faceGeometry.setIndex(indices);
+    const faceMaterial = new THREE.MeshBasicMaterial({
+      color: "0xff0000",
+      side: THREE.DoubleSide,
+    });
+    faceRef.current = new THREE.Mesh(faceGeometry, faceMaterial);
+    faceRef.current.userData.type = "face";
+    sceneRef.current.add(faceRef.current);
+  };
+
+  const drawFaceByShape = (vertices) => {
+    if (vertices.length <= 2) return;
+    shapeRef.current = new THREE.Shape();
+    // 起始点
+    shapeRef.current.moveTo(vertices[0].x, vertices[0].y);
+    // 连接其他点
+    for (let i = 1; i < vertices.length; i++) {
+        shapeRef.current.lineTo(vertices[i].x, vertices[i].y);
+    }
+
+    // 闭合路径
+    shapeRef.current.closePath();
+    // 创建一个Geometry并填充颜色
+    const geometry = new THREE.ShapeGeometry(shapeRef.current); // 创建面
+    const material = new THREE.MeshBasicMaterial({
+      color: 0xff0000, // 填充颜色
+      side: THREE.DoubleSide, // 双面显示
+      transparent: true,
+      opacity: 0.5, // 设置透明度
+    });
+
+    const faceMesh = new THREE.Mesh(geometry, material);
+    sceneRef.current.add(faceMesh);
+  };
+
   // 绘制多边形
   const drawPolygon = (vertices) => {
     // 清除之前的多边形
-    // sceneRef.current.children = sceneRef.current.children.filter(
-    //   (obj) => obj.type !== "Mesh" || obj.userData?.type === "point"
-    // );
+    sceneRef.current.children = sceneRef.current.children.filter(
+      (obj) => obj.type !== "Mesh"
+    );
     // 绘制点
     vertices.forEach((vertex) => {
       const pointGeometry = new THREE.SphereGeometry(5, 16, 16); // 小球表示点
@@ -213,39 +274,9 @@ export function useDrawPolygon({ topDown }) {
     lineRef.current = new THREE.Line(lineGeometry, lineMaterial);
     sceneRef.current.add(lineRef.current);
 
-    if (vertices.length > 2) {
-      // 创建面的几何体
-      const flatVertices = vertices.reduce(
-        (acc, vertex) => acc.concat([vertex.x, vertex.y]),
-        []
-      );
-      const indices = earcut(flatVertices); // 获取顶点索引
-
-    //   console.log("indices = ", indices);
-    //   console.log("flatVertices = ", flatVertices);
-
-      const positionArray = new Float32Array((flatVertices.length * 3) / 2); // 获取一个三维点位的数组（填充z）
-      for (let i = 0; i < flatVertices.length; i += 2) {
-        positionArray[(i / 2) * 3] = flatVertices[i];
-        positionArray[(i / 2) * 3 + 1] = flatVertices[i + 1];
-        positionArray[(i / 2) * 3 + 2] = 0; // z平面
-      }
-      console.log("positionArray = ", positionArray);
-
-      const faceGeometry = new THREE.BufferGeometry();
-      faceGeometry.setAttribute(
-        "position",
-        new THREE.Float32BufferAttribute(positionArray, 3)
-      );
-      faceGeometry.setIndex(indices);
-      const faceMaterial = new THREE.MeshBasicMaterial({
-        color: "0xff0000",
-        side: THREE.DoubleSide,
-      });
-      faceRef.current = new THREE.Mesh(faceGeometry, faceMaterial);
-      faceRef.current.userData.type = "face";
-      sceneRef.current.add(faceRef.current);
-    }
-    // console.log("sceneRef.current = ", sceneRef.current.children);
+    // 创建面的几何体
+    //   drawFaceByEarCut(vertices);
+    drawFaceByShape(vertices)
+    console.log("sceneRef.current = ", sceneRef.current.children);
   };
 }
