@@ -43,10 +43,12 @@ export function useDrawPolygon({ topDown, rotate }) {
     return center;
   };
 
-  const rotateVertices = (vertices, center, angle) => {
+  const getRotatedVertices = (vertices, center, angle) => {
     const angleInRadians = THREE.MathUtils.degToRad(angle); // 将角度转为弧度
     const cos = Math.cos(angleInRadians);
     const sin = Math.sin(angleInRadians);
+
+    const newVertices = [];
 
     vertices.forEach((vertex) => {
       // 将顶点平移到以中心点为原点
@@ -58,10 +60,13 @@ export function useDrawPolygon({ topDown, rotate }) {
       const rotatedY = translatedX * sin + translatedY * cos;
 
       // 平移回原位置
-      vertex.x = rotatedX + center.x;
-      vertex.y = rotatedY + center.y;
+      const x = rotatedX + center.x;
+      const y = rotatedY + center.y;
+
       // z 坐标保持不变
+      newVertices.push(new THREE.Vector3(x, y , 0))
     });
+    return newVertices;
   };
 
   // 辅助函数，用于计算两点在平面上的距离（这里简单以二维平面距离计算为例，可根据实际需求调整更精准的空间距离计算方式）
@@ -73,31 +78,17 @@ export function useDrawPolygon({ topDown, rotate }) {
 
   useEffect(() => {
     if (rotate && selectRef.current) {
-      //   const positionArr = selectRef.current.geometry.attributes.position.array;
-      //   const vertices = [];
-      //   for (let i = 0; i < positionArr.length; i += 3) {
-      //     const x = positionArr[i * 3];
-      //     const y = positionArr[i * 3 + 1];
-      //     const z = positionArr[i * 3 + 2];
-      //     vertices.push(new THREE.Vector3(x, y, z));
-      //   }
-      //   const center = calculateCenter(vertices);
-      //   console.log("center = ", center, vertices);
-      //   debugger
-      //   rotateVertices(vertices, center, rotate);
-      //   console.log("vertices = ", vertices)
-      //   debugger
-      //   //   redrawGeometry(selectRef.current.geometry, vertices);
-      //   drawPolygon(vertices);
-      // 将几何体的中心点移动到 (0, 0, 0)
-      selectRef.current.geometry.center();
-
-      // 然后直接旋转
-      const angleInRadians = THREE.MathUtils.degToRad(45); // 旋转角度，单位为弧度
-      selectRef.current.rotation.z += angleInRadians;
-
-      // 如果需要反复渲染
-      selectRef.current.updateMatrixWorld(); // 更新矩阵
+        const positionArr = selectRef.current.geometry.attributes.position.array;
+        const vertices = [];
+        for (let i = 0; i < positionArr.length; i += 3) {
+          const x = positionArr[(i / 3)* 3];
+          const y = positionArr[(i / 3)* 3 + 1];
+          const z = positionArr[(i /3)* 3 + 2];
+          vertices.push(new THREE.Vector3(x, y, z));
+        }
+        const center = calculateCenter(vertices);
+        const newVertices = getRotatedVertices(vertices, center, rotate);
+        drawPolygon(newVertices);
     }
   }, [rotate]);
 
@@ -202,11 +193,10 @@ export function useDrawPolygon({ topDown, rotate }) {
         (obj) => obj.userData.type === "face"
       );
       const faceIntersects = raycasterRef.current.intersectObjects(faces);
-      console.log("faces = ", faces);
 
       // 如果点击到了面，打印该面的信息
       if (faceIntersects.length > 0) {
-        const intersectedFace = faceIntersects[0].object;
+        const intersectedFace = faceIntersects[0]?.object;
         console.log("Clicked face: ", intersectedFace.userData, faces);
         selectRef.current = faces[0];
         const position = faces[0].geometry.attributes.position;
