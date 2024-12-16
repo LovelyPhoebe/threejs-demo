@@ -4,7 +4,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GUI } from "three/addons/libs/lil-gui.module.min.js";
 import earcut from "earcut";
 
-export function useDrawPolygon({ topDown, rotate }) {
+export function useDrawPolygon({ topDown, rad }) {
   const sceneRef = useRef();
   const cameraRef = useRef();
   const renderRef = useRef();
@@ -44,9 +44,11 @@ export function useDrawPolygon({ topDown, rotate }) {
   };
 
   const getRotatedVertices = (vertices, center, angle) => {
-    const angleInRadians = THREE.MathUtils.degToRad(angle); // 将角度转为弧度
-    const cos = Math.cos(angleInRadians);
-    const sin = Math.sin(angleInRadians);
+    // const angleInRadians = THREE.MathUtils.degToRad(angle); // 将角度转为弧度
+    // const cos = Math.cos(angleInRadians);
+    // const sin = Math.sin(angleInRadians);
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
 
     const newVertices = [];
 
@@ -64,7 +66,7 @@ export function useDrawPolygon({ topDown, rotate }) {
       const y = rotatedY + center.y;
 
       // z 坐标保持不变
-      newVertices.push(new THREE.Vector3(x, y , 0))
+      newVertices.push(new THREE.Vector3(x, y, 0));
     });
     return newVertices;
   };
@@ -77,20 +79,20 @@ export function useDrawPolygon({ topDown, rotate }) {
   };
 
   useEffect(() => {
-    if (rotate && selectRef.current) {
-        const positionArr = selectRef.current.geometry.attributes.position.array;
-        const vertices = [];
-        for (let i = 0; i < positionArr.length; i += 3) {
-          const x = positionArr[(i / 3)* 3];
-          const y = positionArr[(i / 3)* 3 + 1];
-          const z = positionArr[(i /3)* 3 + 2];
-          vertices.push(new THREE.Vector3(x, y, z));
-        }
-        const center = calculateCenter(vertices);
-        const newVertices = getRotatedVertices(vertices, center, rotate);
-        drawPolygon(newVertices);
+    if (rad && selectRef.current) {
+      const positionArr = selectRef.current.geometry.attributes.position.array;
+      const vertices = [];
+      for (let i = 0; i < positionArr.length; i += 3) {
+        const x = positionArr[i];
+        const y = positionArr[i + 1];
+        const z = positionArr[i + 2];
+        vertices.push(new THREE.Vector3(x, y, z));
+      }
+      const center = calculateCenter(vertices);
+      const newVertices = getRotatedVertices(vertices, center, rad);
+      drawPolygon(newVertices);
     }
-  }, [rotate]);
+  }, [rad]);
 
   // 控制2d 3d是否可编辑
   useEffect(() => {
@@ -318,7 +320,7 @@ export function useDrawPolygon({ topDown, rotate }) {
   const drawPolygon = (vertices) => {
     // 清除之前的多边形
     sceneRef.current.children = sceneRef.current.children.filter(
-      (obj) => obj.type !== "Mesh"
+      (obj) => obj.type !== "Mesh" && obj.type !== "Line"
     );
     // 绘制点
     vertices.forEach((vertex) => {
