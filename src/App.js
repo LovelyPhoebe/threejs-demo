@@ -19,25 +19,41 @@ import { radToDeg } from "./utils/tool";
 function App() {
   const [topDown, setTopDown] = useState(true);
   const [rad, serRad] = useState(0);
+  const [isDrag, setIsDrag] = useState(false);
   // useBase();
   // useZhenlie()
   // useBufferGeom()
   // useInte()
   // useLine()
-  useDrawPolygon({ topDown, rad });
+  useDrawPolygon({ topDown, rad, isDrag });
 
   const deg = useMemo(() => {
-    return radToDeg(rad).toFixed(1)
-  }, [rad])
+    return radToDeg(rad).toFixed(1);
+  }, [rad]);
   return (
     <div className="App" id="app">
       <div className="btn">
         <Space>
-          <Button onClick={() => setTopDown((pre) => !pre)} type="primary">
+          <Button
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              setTopDown((pre) => !pre);
+            }}
+            type="primary"
+          >
             {topDown ? "3D空间" : "俯视图"}
           </Button>
-          <Button>
-            旋转 {deg} 度
+          <Button>旋转 {deg} 度</Button>
+          <Button
+            onClick={(e) => {
+              console.log("e = ", e);
+              e.stopPropagation();
+              e.preventDefault();
+              setIsDrag((pre) => !pre);
+            }}
+          >
+            {isDrag ? "取消拖拽" : "拖拽"}
           </Button>
         </Space>
       </div>

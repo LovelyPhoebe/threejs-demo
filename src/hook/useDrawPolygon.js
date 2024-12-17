@@ -4,12 +4,12 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GUI } from "three/addons/libs/lil-gui.module.min.js";
 import earcut from "earcut";
 
-export function useDrawPolygon({ topDown, rad }) {
+export function useDrawPolygon({ topDown, rad, isDrag }) {
   const sceneRef = useRef();
   const cameraRef = useRef();
   const renderRef = useRef();
   const raycasterRef = useRef(); // 射线投射器
-  const pointer = new THREE.Vector2(); // 鼠标位置
+  const pointerRef = useRef(new THREE.Vector2()); // 鼠标位置
   const controlsRef = useRef();
   const planeRef = useRef(); // 基准平面
   const [points, setPoints] = useState([]); // 存储多边形顶点
@@ -21,6 +21,10 @@ export function useDrawPolygon({ topDown, rad }) {
   const faceRef = useRef();
   const shapeRef = useRef();
   const selectRef = useRef();
+  const isDragRef = useRef(false);
+  const isDraggingRef = useRef(false);
+  const mouseRef = useRef();
+  const geometry0Ref = useRef();
 
   const initGrid = () => {
     const gridDivision = 50;
@@ -43,14 +47,9 @@ export function useDrawPolygon({ topDown, rad }) {
     return center;
   };
 
-  const getRotatedVertices = (vertices, center, angle) => {
-    // const angleInRadians = THREE.MathUtils.degToRad(angle); // 将角度转为弧度
-    // const cos = Math.cos(angleInRadians);
-    // const sin = Math.sin(angleInRadians);
+  const rotatedVertices = (vertices, center, angle) => {
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
-
-    const newVertices = [];
 
     vertices.forEach((vertex) => {
       // 将顶点平移到以中心点为原点
@@ -62,13 +61,9 @@ export function useDrawPolygon({ topDown, rad }) {
       const rotatedY = translatedX * sin + translatedY * cos;
 
       // 平移回原位置
-      const x = rotatedX + center.x;
-      const y = rotatedY + center.y;
-
-      // z 坐标保持不变
-      newVertices.push(new THREE.Vector3(x, y, 0));
+      vertex.x = rotatedX + center.x;
+      vertex.y = rotatedY + center.y;
     });
-    return newVertices;
   };
 
   // 辅助函数，用于计算两点在平面上的距离（这里简单以二维平面距离计算为例，可根据实际需求调整更精准的空间距离计算方式）
@@ -89,8 +84,12 @@ export function useDrawPolygon({ topDown, rad }) {
         vertices.push(new THREE.Vector3(x, y, z));
       }
       const center = calculateCenter(vertices);
-      const newVertices = getRotatedVertices(vertices, center, rad);
-      drawPolygon(newVertices);
+      const pointMesh = drawPoint(center);
+      console.log("pointMesh = ", pointMesh);
+
+      sceneRef.current.add(pointMesh);
+      rotatedVertices(vertices, center, rad);
+      drawPolygon(vertices);
     }
   }, [rad]);
 
@@ -121,6 +120,10 @@ export function useDrawPolygon({ topDown, rad }) {
       }
     }
   }, [topDown]);
+
+  useEffect(() => {
+    isDragRef.current = isDrag;
+  }, [isDrag]);
 
   useEffect(() => {
     guiRef.current = new GUI();
@@ -182,31 +185,93 @@ export function useDrawPolygon({ topDown, rad }) {
       cameraRef.current.updateProjectionMatrix();
     };
 
+    const calculateRaycaster = (event) => {
+      // 更新鼠标位置
+      pointerRef.current.x = (event.clientX / window.innerWidth) * 2 - 1;
+      pointerRef.current.y = -(event.clientY / window.innerHeight) * 2 + 1;
+      // 计算鼠标移动的距离
+      raycasterRef.current.setFromCamera(pointerRef.current, cameraRef.current);
+    };
+
+    const onMouseDown = (event) => {
+      if (!isDragRef.current || !selectRef.current) return;
+      calculateRaycaster(event);
+      const faceIntersects = raycasterRef.current.intersectObject(
+        selectRef.current
+      );
+      // 如果点击到了面，打印该面的信息
+      if (faceIntersects?.length > 0) {
+        console.log("faceIntersects = ", faceIntersects);
+        const intersectedFace = faceIntersects[0].object;
+        const uv = faceIntersects[0].uv;
+        console.log("Clicked face: ", intersectedFace);
+        const position = intersectedFace.geometry.attributes.position;
+        console.log("Clicked face position: ", position);
+        mouseRef.current = new THREE.Vector3(uv.x, uv.y, 0);
+        console.log("current click mouse = ", mouseRef.current);
+        isDraggingRef.current = true;
+        geometry0Ref.current =
+          selectRef.current.geometry.attributes.position.clone();
+        console.log("geometry0Ref.current = ", geometry0Ref.current);
+      }
+    };
+
+    // 拖拽鼠标监听
+    const onMouseMove = (event) => {
+      if (!isDragRef.current || !isDraggingRef.current || !selectRef.current)
+        return;
+      calculateRaycaster(event);
+      const intersects = raycasterRef.current.intersectObject(selectRef.current);
+
+      if (intersects.length > 0) {
+        const intersectUv = intersects[0].uv;
+        const newPoint = new THREE.Vector3(intersectUv.x, intersectUv.y, 0); // 获取新的交点
+        const delta = newPoint.sub(mouseRef.current); // 计算偏移量
+        // 获取新的多边形
+        const oriPosition = selectRef.current.geometry.attributes.position.array;
+        // 使用api更新
+        // for (let i = 0; i < oriPosition.length; i += 3) {
+        //   oriPosition[i] = oriPosition[i] + delta.x;
+        //   oriPosition[i + 1] = oriPosition[i + 1] + delta.y;
+        //   oriPosition[i + 2] = 0;
+        // }
+        // selectRef.current.geometry.attributes.position.needsUpdate = true
+        // 计算重绘
+        const vertices = [];
+        for (let i = 0; i < oriPosition.length; i += 3) {
+          const x = oriPosition[i]; // 顶点的 x 坐标
+          const y = oriPosition[i + 1]; // 顶点的 y 坐标
+          const z = oriPosition[i + 2]; // 顶点的 z 坐标
+          const oriVertex = new THREE.Vector3(x, y, z);
+          const newVertex = oriVertex.add(delta);
+          vertices.push(newVertex);
+        }
+        drawPolygon(vertices);
+      }
+    };
+
+    const onMouseUp = () => {
+      if (isDragRef.current && isDraggingRef.current) {
+        isDraggingRef.current = false;
+      }
+    };
+
     // 鼠标事件监听
     const onClick = (event) => {
-      if (!isTopDownRef.current) return;
-      // 计算鼠标在屏幕上的归一化坐标
-      pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
-      pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
-      console.log("click = ", event);
+      if (!isTopDownRef.current && isDragRef.current) return;
+      calculateRaycaster(event);
 
-      // 检查是否点击到面(多面，此只选0)
-      const faces = sceneRef.current.children.filter(
-        (obj) => obj.userData.type === "face"
-      );
-      const faceIntersects = raycasterRef.current.intersectObjects(faces);
-
-      // 如果点击到了面，打印该面的信息
-      if (faceIntersects.length > 0) {
-        const intersectedFace = faceIntersects[0]?.object;
-        console.log("Clicked face: ", intersectedFace.userData, faces);
-        selectRef.current = faces[0];
-        const position = faces[0].geometry.attributes.position;
-        console.log("Clicked position: ", position);
-        return;
+      // 是否点击到多边形元素
+      if (faceRef.current) {
+        const intersectFace = raycasterRef.current.intersectObject(
+          faceRef.current
+        );
+        if (intersectFace.length > 0) {
+          selectRef.current = intersectFace[0].object;
+          console.log("select object = ", selectRef.current);
+          return;
+        }
       }
-      // 投射到平面上
-      raycasterRef.current.setFromCamera(pointer, cameraRef.current);
       const intersects = raycasterRef.current.intersectObject(planeRef.current);
       console.log("intersects = ", intersects);
       if (intersects.length > 0) {
@@ -244,9 +309,15 @@ export function useDrawPolygon({ topDown, rad }) {
     });
 
     window.addEventListener("click", onClick);
+    window.addEventListener("mousedown", onMouseDown);
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
     return () => {
       window.removeEventListener("click", onClick);
       window.removeEventListener("contextmenu", (e) => onRightClick(e));
+      window.removeEventListener("mousedown", onMouseDown);
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
       document.body.removeChild(renderRef.current.domElement);
     };
   }, []);
@@ -316,6 +387,15 @@ export function useDrawPolygon({ topDown, rad }) {
     sceneRef.current.add(faceRef.current);
   };
 
+  const drawPoint = (vertex) => {
+    const pointGeometry = new THREE.SphereGeometry(5, 16, 16); // 小球表示点
+    const pointMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 }); // 黄色材质
+    const pointMesh = new THREE.Mesh(pointGeometry, pointMaterial);
+    pointMesh.position.set(vertex.x, vertex.y, vertex.z);
+    pointMesh.userData.type = "point"; // 标记为点
+    return pointMesh;
+  };
+
   // 绘制多边形
   const drawPolygon = (vertices) => {
     // 清除之前的多边形
@@ -324,12 +404,7 @@ export function useDrawPolygon({ topDown, rad }) {
     );
     // 绘制点
     vertices.forEach((vertex) => {
-      console.log("vertex = ", vertex, vertex.x);
-      const pointGeometry = new THREE.SphereGeometry(5, 16, 16); // 小球表示点
-      const pointMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 }); // 黄色材质
-      const pointMesh = new THREE.Mesh(pointGeometry, pointMaterial);
-      pointMesh.position.set(vertex.x, vertex.y, vertex.z);
-      pointMesh.userData.type = "point"; // 标记为点
+      const pointMesh = drawPoint(vertex);
       sceneRef.current.add(pointMesh);
     });
 
