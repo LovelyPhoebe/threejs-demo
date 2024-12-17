@@ -20,6 +20,7 @@ function App() {
   const [topDown, setTopDown] = useState(true);
   const [rad, serRad] = useState(0);
   const [isDrag, setIsDrag] = useState(false);
+  const [isWheel, setIsWheel] = useState(false);
   // useBase();
   // useZhenlie()
   // useBufferGeom()
@@ -47,13 +48,21 @@ function App() {
           <Button>旋转 {deg} 度</Button>
           <Button
             onClick={(e) => {
-              console.log("e = ", e);
               e.stopPropagation();
               e.preventDefault();
               setIsDrag((pre) => !pre);
             }}
           >
             {isDrag ? "取消拖拽" : "拖拽"}
+          </Button>
+          <Button
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              setIsWheel((pre) => !pre);
+            }}
+          >
+            {isWheel ? "取消缩放" : "缩放"}
           </Button>
         </Space>
       </div>

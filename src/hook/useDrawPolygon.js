@@ -4,7 +4,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GUI } from "three/addons/libs/lil-gui.module.min.js";
 import earcut from "earcut";
 
-export function useDrawPolygon({ topDown, rad, isDrag }) {
+export function useDrawPolygon({ topDown, rad, isDrag, isWheel }) {
   const sceneRef = useRef();
   const cameraRef = useRef();
   const renderRef = useRef();
@@ -23,6 +23,7 @@ export function useDrawPolygon({ topDown, rad, isDrag }) {
   const selectRef = useRef();
   const isDragRef = useRef(false);
   const isDraggingRef = useRef(false);
+  const isWheelRef = useRef(false);
   const mouseRef = useRef();
   const geometry0Ref = useRef();
 
@@ -36,6 +37,10 @@ export function useDrawPolygon({ topDown, rad, isDrag }) {
     gridRef.current.material.opacity = 0.2; // 设置网格透明度为0.5，可根据实际情况调整该值
     gridRef.current.material.transparent = true; // 开启透明属性
   };
+
+  useEffect(() => {
+    isWheelRef.current = isWheel;
+  }, [isWheel])
 
   // 计算面的中心点
   const calculateCenter = (vertices) => {
@@ -193,6 +198,24 @@ export function useDrawPolygon({ topDown, rad, isDrag }) {
       raycasterRef.current.setFromCamera(pointerRef.current, cameraRef.current);
     };
 
+    // 鼠标滚轮事件监听，用于缩放
+    const onWheel = (event) => {
+      // 判断是否已经选中对象
+      if (!selectRef.current && !isWheelRef.current) return;
+      console.log("event = ", event)
+
+      // 根据滚轮的方向来调整缩放比例
+      const scaleFactor = event.deltaY > 0 ? 0.9 : 1.1; // 滚动向下缩小，滚动向上放大
+
+      // 获取当前的缩放值并应用新的缩放因子
+      selectRef.current.scale.x *= scaleFactor;
+      selectRef.current.scale.y *= scaleFactor;
+      selectRef.current.scale.z *= scaleFactor;
+
+      // 更新物体的缩放
+      selectRef.current.updateMatrix(); // 更新物体的矩阵
+    };
+
     const onMouseDown = (event) => {
       if (!isDragRef.current || !selectRef.current) return;
       calculateRaycaster(event);
@@ -221,32 +244,35 @@ export function useDrawPolygon({ topDown, rad, isDrag }) {
       if (!isDragRef.current || !isDraggingRef.current || !selectRef.current)
         return;
       calculateRaycaster(event);
-      const intersects = raycasterRef.current.intersectObject(selectRef.current);
+      const intersects = raycasterRef.current.intersectObject(
+        selectRef.current
+      );
 
       if (intersects.length > 0) {
         const intersectUv = intersects[0].uv;
         const newPoint = new THREE.Vector3(intersectUv.x, intersectUv.y, 0); // 获取新的交点
         const delta = newPoint.sub(mouseRef.current); // 计算偏移量
         // 获取新的多边形
-        const oriPosition = selectRef.current.geometry.attributes.position.array;
+        const oriPosition =
+          selectRef.current.geometry.attributes.position.array;
         // 使用api更新
-        // for (let i = 0; i < oriPosition.length; i += 3) {
-        //   oriPosition[i] = oriPosition[i] + delta.x;
-        //   oriPosition[i + 1] = oriPosition[i + 1] + delta.y;
-        //   oriPosition[i + 2] = 0;
-        // }
-        // selectRef.current.geometry.attributes.position.needsUpdate = true
-        // 计算重绘
-        const vertices = [];
         for (let i = 0; i < oriPosition.length; i += 3) {
-          const x = oriPosition[i]; // 顶点的 x 坐标
-          const y = oriPosition[i + 1]; // 顶点的 y 坐标
-          const z = oriPosition[i + 2]; // 顶点的 z 坐标
-          const oriVertex = new THREE.Vector3(x, y, z);
-          const newVertex = oriVertex.add(delta);
-          vertices.push(newVertex);
+          oriPosition[i] = oriPosition[i] + delta.x;
+          oriPosition[i + 1] = oriPosition[i + 1] + delta.y;
+          oriPosition[i + 2] = 0;
         }
-        drawPolygon(vertices);
+        selectRef.current.geometry.attributes.position.needsUpdate = true;
+        // 计算重绘
+        // const vertices = [];
+        // for (let i = 0; i < oriPosition.length; i += 3) {
+        //   const x = oriPosition[i]; // 顶点的 x 坐标
+        //   const y = oriPosition[i + 1]; // 顶点的 y 坐标
+        //   const z = oriPosition[i + 2]; // 顶点的 z 坐标
+        //   const oriVertex = new THREE.Vector3(x, y, z);
+        //   const newVertex = oriVertex.add(delta);
+        //   vertices.push(newVertex);
+        // }
+        // drawPolygon(vertices);
       }
     };
 
@@ -312,12 +338,14 @@ export function useDrawPolygon({ topDown, rad, isDrag }) {
     window.addEventListener("mousedown", onMouseDown);
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);
+    window.addEventListener("wheel", onWheel); // 添加滚轮缩放事件监听
     return () => {
       window.removeEventListener("click", onClick);
       window.removeEventListener("contextmenu", (e) => onRightClick(e));
       window.removeEventListener("mousedown", onMouseDown);
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
+      window.removeEventListener("wheel", onWheel); // 添加滚轮缩放事件监听
       document.body.removeChild(renderRef.current.domElement);
     };
   }, []);
