@@ -26,7 +26,7 @@ function App() {
   // useBufferGeom()
   // useInte()
   // useLine()
-  useDrawPolygon({ topDown, rad, isDrag });
+  useDrawPolygon({ topDown, rad, isDrag, isWheel });
 
   const deg = useMemo(() => {
     return radToDeg(rad).toFixed(1);
