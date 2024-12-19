@@ -3,8 +3,11 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GUI } from "three/addons/libs/lil-gui.module.min.js";
 import earcut from "earcut";
+import { Layer } from "../layer/Layer";
+import { LayerManager } from "../layer/LayerManager";
+import { Shape } from "../layer/Shape";
 
-export function useDrawPolygon({ topDown, rad, isDrag, isWheel }) {
+export function useDrawPolygon({ topDown, rad, isDrag, isWheel, curLayer }) {
   const sceneRef = useRef();
   const cameraRef = useRef();
   const renderRef = useRef();
@@ -12,7 +15,7 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel }) {
   const pointerRef = useRef(new THREE.Vector2()); // 鼠标位置
   const controlsRef = useRef();
   const planeRef = useRef(); // 基准平面
-  const [points, setPoints] = useState([]); // 存储多边形顶点
+  const pointsRef = useRef([]); // 存储多边形顶点
   const lineRef = useRef();
   const guiRef = useRef();
   const isTopDownRef = useRef();
@@ -28,6 +31,24 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel }) {
   const geometry0Ref = useRef();
   const modifyGeometry = useRef(); // 存储内容为bufferAttribute
   const edgeRef = useRef();
+  const wallRef = useRef();
+  const slopeRef = useRef();
+  const managerRef = useRef();
+  const polygonColor = useRef();
+  const curLayerRef = useRef();
+
+  const changeCurLayer = (curLayer) => {
+    const currentLayer = managerRef.current?.selectLayer(curLayer);
+    planeRef.current = currentLayer?.getBasePlane() || null;
+  };
+
+  useEffect(() => {
+    changeCurLayer(curLayer);
+    curLayerRef.current = curLayer;
+    const color = curLayer === "wall" ? 0x00ffff : 0xff00ff;
+    polygonColor.current = color;
+    selectRef.current = null;
+  }, [curLayer]);
 
   const initGrid = () => {
     const gridDivision = 50;
@@ -98,8 +119,7 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel }) {
       const center = calculateCenter(vertices);
       // 这是多边形的边界圆的圆心
       // const center = selectRef.current.geometry.boundingSphere.center
-      const pointMesh = drawPoint(center);
-
+      const pointMesh = generatePoint(center);
       sceneRef.current.add(pointMesh);
       rotatedVertices(vertices, center, rad);
       drawPolygon(vertices);
@@ -115,7 +135,7 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel }) {
         controlsRef.current = null;
       }
       if (cameraRef.current) {
-        cameraRef.current.position.set(0, 0, 1000); // 设置在 Top-Down 视角
+        cameraRef.current.position.set(0, 0, 500); // 设置在 Top-Down 视角
         cameraRef.current.lookAt(0, 0, 0);
       }
     } else {
@@ -153,7 +173,7 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel }) {
 
     // 创建相机
     cameraRef.current = new THREE.PerspectiveCamera(75, w / h, 0.1, 10000);
-    cameraRef.current.position.set(0, 0, 1000); // 设置在 Top-Down 视角
+    cameraRef.current.position.set(0, 0, 500); // 设置在 Top-Down 视角
     cameraRef.current.lookAt(0, 0, 0);
 
     // 创建渲染器
@@ -170,18 +190,41 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel }) {
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
     sceneRef.current.add(ambientLight);
 
+    wallRef.current = new Layer("wall", sceneRef.current);
+    slopeRef.current = new Layer("slope", sceneRef.current);
+    managerRef.current = new LayerManager();
     // 创建辅助平面 (z=0)
-    const planeGeometry = new THREE.PlaneGeometry(size, size);
-    const planeMaterial = new THREE.MeshBasicMaterial({
+    // 虚拟墙基准面
+    const wallGeometry = new THREE.PlaneGeometry(size, size);
+    const wallMaterial = new THREE.MeshBasicMaterial({
       color: 0xffffff,
       side: THREE.FrontSide,
       transparent: true,
       opacity: 0,
     });
-    planeRef.current = new THREE.Mesh(planeGeometry, planeMaterial);
-    planeRef.current.visible = true;
-    sceneRef.current.add(planeRef.current);
+    const isBasePlane = true;
+    const wallMesh = new THREE.Mesh(wallGeometry, wallMaterial);
+    const wallShape = new Shape(wallMesh, isBasePlane);
+    wallRef.current.addObject(wallShape);
+    managerRef.current.addLayer(wallRef.current);
+    // 斜坡基准面
+    const slopeGeometry = new THREE.PlaneGeometry(size, size);
+    const slopeMaterial = new THREE.MeshBasicMaterial({
+      color: 0xff00ff,
+      side: THREE.FrontSide,
+      transparent: true,
+      opacity: 0,
+    });
+    const slopeMesh = new THREE.Mesh(slopeGeometry, slopeMaterial);
+    const slopeShape = new Shape(slopeMesh, isBasePlane);
+    slopeRef.current.addObject(slopeShape);
+    managerRef.current.addLayer(slopeRef.current);
+    console.log("managerRef.current = ", managerRef.current);
 
+    changeCurLayer("wall");
+
+    console.log("sceneRef.current", sceneRef.current.children);
+    console.log("plane currrent = ", planeRef.current);
     initGrid();
 
     // 动画循环
@@ -224,6 +267,14 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel }) {
       selectRef.current.updateMatrix(); // 更新物体的矩阵
     };
 
+    const onZoomWheel = (event) => {
+      event.preventDefault();
+
+      // 缩放因子
+      const delta = event.deltaY > 0 ? 0.95 : 1.05;
+      cameraRef.current.position.z *= delta;
+    };
+
     const onMouseDown = (event) => {
       if (!selectRef.current) return;
       if (!isWheelRef.current && !isDragRef.current) return;
@@ -263,7 +314,7 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel }) {
       if (intersects.length <= 0) return;
       // 增加鼠标滑动高亮鼠标点
       const point = intersects[0].point;
-      const pointer = drawPoint(point, true);
+      const pointer = generatePoint(point, true);
       sceneRef.current.add(pointer);
       // TODO:如果抓到多边形点则吸附
       if (!isDragRef.current && !isWheelRef.current) return;
@@ -271,39 +322,19 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel }) {
       const newPoint = new THREE.Vector3(point.x, point.y, 0); // 获取新的交点
       if (isDragRef.current) {
         const delta = newPoint.sub(mouseRef.current); // 计算偏移量
-        // 使用translate api更新
-        // selectRef.current.geometry.translate(delta.x, delta.y, delta.z);
-        // // 获取新的多边形
-        const oriPosition =
-          selectRef.current.geometry.attributes.position.array;
-        // // 使用needsUpdate api更新
-        // for (let i = 0; i < oriPosition.length; i += 3) {
-        //   oriPosition[i] = oriPosition[i] + delta.x;
-        //   oriPosition[i + 1] = oriPosition[i + 1] + delta.y;
-        //   oriPosition[i + 2] = 0;
-        // }
-        // selectRef.current.geometry.attributes.position.needsUpdate = true;
-        // 计算重绘
-        const vertices = [];
-        for (let i = 0; i < oriPosition.length; i += 3) {
-          const x = oriPosition[i]; // 顶点的 x 坐标
-          const y = oriPosition[i + 1]; // 顶点的 y 坐标
-          const z = oriPosition[i + 2]; // 顶点的 z 坐标
-          const oriVertex = new THREE.Vector3(x, y, z);
-          const newVertex = oriVertex.add(delta);
-          vertices.push(newVertex);
-        }
-        drawPolygon(vertices);
+        console.log("delta = ", delta);
+        selectRef.current.geometry.translate(delta.x, delta.y, delta.z);
+        selectRef.current.geometry.attributes.position.needsUpdate = true;
       } else if (isWheelRef.current) {
         // 旋转 + 缩放
         console.log("旋转 + 缩放");
-        const positionArr = modifyGeometry.current.array;
+        const positionArr =
+          selectRef.current.geometry.attributes.position.array;
         const vertices = positions2Vertices(positionArr);
         const center = calculateCenter(vertices);
 
         // 获取当前鼠标位置和上一个鼠标位置的向量
         const lastMousePos = mouseRef.current;
-        console.log("lastMousePos = ", lastMousePos)
         const mouseDirection = new THREE.Vector2(
           newPoint.x - center.x,
           newPoint.y - center.y
@@ -312,29 +343,32 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel }) {
           lastMousePos.x - center.x,
           lastMousePos.y - center.y
         );
-
         // 计算旋转角度
         const angle = mouseDirection.angle() - lastMouseDirection.angle();
         console.log("旋转角度：", angle);
-
         // 计算缩放比例
         const scaleFactor =
           mouseDirection.length() / lastMouseDirection.length();
         console.log("缩放比例：", scaleFactor);
-
         // 应用旋转
         rotatedVertices(vertices, center, angle); // 旋转顶点
-
         // 应用缩放
         vertices.forEach((vertex) => {
           vertex.sub(center); // 向量减去中心点
           vertex.multiplyScalar(scaleFactor); // 缩放
           vertex.add(center); // 重新加回中心点
         });
-
-        // 重绘多边形
-        drawPolygon(vertices);
+        // 将新的顶点数据更新到几何体
+        for (let i = 0; i < vertices.length; i++) {
+          positionArr[i * 3] = vertices[i].x;
+          positionArr[i * 3 + 1] = vertices[i].y;
+          positionArr[i * 3 + 2] = vertices[i].z;
+        }
+        // 更新几何体
+        selectRef.current.geometry.attributes.position.needsUpdate = true;
       }
+      // 存储新的鼠标位置
+      mouseRef.current = new THREE.Vector3(point.x, point.y, 0);
     };
 
     const onMouseUp = () => {
@@ -351,49 +385,37 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel }) {
     const onClick = (event) => {
       if (!isTopDownRef.current) return;
       if (isDragRef.current || isWheelRef.current) return;
-      console.log("isWheelRef.current = ", isWheelRef.current);
       calculateRaycaster(event);
-
       // 是否点击到多边形元素
-      if (faceRef.current) {
-        const intersectFace = raycasterRef.current.intersectObject(
-          faceRef.current
-        );
-        if (intersectFace.length > 0) {
-          selectRef.current = intersectFace[0].object;
-          console.log("select object = ", selectRef.current);
-          // console.log("selectRef.current.area", selectRef.current.getArea())
-          return;
-        }
-      }
-      const intersects = raycasterRef.current.intersectObject(planeRef.current);
-      console.log("intersects = ", intersects);
-      if (intersects.length > 0) {
-        const point = intersects[0].point; // 获取交点
-        setPoints((prevPoints) => {
-          const updatedPoints = [...prevPoints, point];
-          // threejs生成面不需要自行判断闭合点,此逻辑可以先行不用
-          //   const currentLength = updatedPoints.length;
-          //   if (currentLength >= 2) {
-          //     const firstPoint = updatedPoints[0];
-          //     const lastPoint = updatedPoints[currentLength - 1];
-          //     const distance = calculate2DDistance(lastPoint, firstPoint);
-          //     if (distance <= 10) {
-          //       // 如果距离小于等于10像素，让最后一个点坐标等于第一个点坐标，实现闭合
-          //       updatedPoints[currentLength - 1] = {
-          //         ...firstPoint,
-          //       };
-          //     }
-          //   }
-          return updatedPoints; // 更新顶点列表
-        });
+      // 判断点击的是图层基准面还是图层多边形
+      // 获取当前图层
+      const currentLayer = managerRef.current.selectLayer(curLayerRef.current);
+      // 当前图层所有元素mesh
+      const meshArray = currentLayer.objects.map((obj) => obj.mesh);
+      console.log("meshArray = ", meshArray);
+      if (meshArray.length < 1) return;
+      const intersects = raycasterRef.current.intersectObjects(meshArray);
+      if (intersects.length < 1) return;
+      const lastIntersect = intersects[intersects.length - 1];
+      // 判断是否为基准面
+      if (lastIntersect.object.userData.isBasePlane) {
+        const point = lastIntersect.point; // 获取交点
+        // 添加点
+        const edgePoint = generatePoint(point);
+        sceneRef.current.add(edgePoint);
+        pointsRef.current.push(point);
+        selectRef.current = null;
+      } else {
+        selectRef.current = lastIntersect.object;
+        console.log("select object = ", selectRef.current);
       }
     };
 
     // 鼠标右键点击事件监听，用于清空points并取消绘制
     const onRightClick = (event) => {
       if (event.button === 2) {
-        setPoints([]);
+        drawPolygon(pointsRef.current);
+        pointsRef.current = [];
       }
     };
 
@@ -406,22 +428,17 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel }) {
     window.addEventListener("mousedown", onMouseDown);
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);
-    // window.addEventListener("wheel", onWheel); // 添加滚轮缩放事件监听
+    window.addEventListener("wheel", onZoomWheel); // 添加滚轮缩放事件监听
     return () => {
       window.removeEventListener("click", onClick);
       window.removeEventListener("contextmenu", (e) => onRightClick(e));
       window.removeEventListener("mousedown", onMouseDown);
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
-      window.removeEventListener("wheel", onWheel); // 添加滚轮缩放事件监听
+      window.removeEventListener("wheel", onZoomWheel); // 添加滚轮缩放事件监听
       document.body.removeChild(renderRef.current.domElement);
     };
   }, []);
-
-  useEffect(() => {
-    console.log("points = ", points);
-    drawPolygon(points); // 更新多边形
-  }, [points]);
 
   const drawFaceByEarCut = (vertices) => {
     if (vertices.length <= 2) return;
@@ -457,7 +474,7 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel }) {
     sceneRef.current.add(faceRef.current);
   };
 
-  const drawFaceByShape = (vertices) => {
+  const generateShape = (vertices) => {
     if (vertices.length <= 2) return;
     const shape = new THREE.Shape();
     // 起始点
@@ -472,30 +489,33 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel }) {
     // 创建一个Geometry并填充颜色
     const geometry = new THREE.ShapeGeometry(shape); // 创建面
     const material = new THREE.MeshBasicMaterial({
-      color: 0xff0000, // 填充颜色
+      color: polygonColor.current,
       side: THREE.DoubleSide, // 双面显示
       transparent: true,
       opacity: 0.5, // 设置透明度
     });
 
-    const face = new THREE.Mesh(geometry, material);
-    face.userData.type = "face";
-    sceneRef.current.add(face);
+    const shapeMesh = new THREE.Mesh(geometry, material);
+    shapeMesh.userData.type = "face";
 
+    return shapeMesh;
+  };
+
+  const drawEdge = (shapeGeomtry) => {
     // 创建边界
-    edgeRef.current = new THREE.EdgesGeometry(geometry);
+    const edge = new THREE.EdgesGeometry(shapeGeomtry);
     lineRef.current = new THREE.Line(
-      edgeRef.current,
+      edge,
       new THREE.LineBasicMaterial({ color: 0xffffff })
     );
     sceneRef.current.add(lineRef.current);
-    return face
   };
 
-  const drawPoint = (vertex, isPointer) => {
-    const pointGeometry = new THREE.SphereGeometry(5, 16, 16); // 小球表示点
+  const generatePoint = (vertex, isPointer) => {
+    const radius = isPointer ? 20 : 16;
+    const pointGeometry = new THREE.SphereGeometry(5, radius, radius); // 小球表示点
     const pointMaterial = new THREE.MeshBasicMaterial({
-      color: isPointer ? 0xff00ff : 0xffff00,
+      color: isPointer ? 0xffffff : 0xffff00,
     }); // 黄色材质
     const pointMesh = new THREE.Mesh(pointGeometry, pointMaterial);
     pointMesh.userData.type = "point"; // 标记为点
@@ -519,21 +539,28 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel }) {
   };
 
   // 绘制多边形
-  const drawPolygon = (vertices, isSelect) => {
+  const drawPolygon = (vertices) => {
     // 清除之前的多边形
+    // sceneRef.current.children = sceneRef.current.children.filter(
+    //   (obj) => obj.type !== "Mesh" && obj.type !== "Line"
+    // );
+    // 清除之前的点和线
     sceneRef.current.children = sceneRef.current.children.filter(
-      (obj) => obj.type !== "Mesh" && obj.type !== "Line"
+      (obj) => obj.userData.type !== "point" && obj.type !== "Line"
     );
     // 绘制点
     vertices.forEach((vertex) => {
-      const pointMesh = drawPoint(vertex);
+      const pointMesh = generatePoint(vertex);
       sceneRef.current.add(pointMesh);
     });
     // 创建面的几何体
+    if (vertices.length < 3) return;
     //   drawFaceByEarCut(vertices);
-    const face = drawFaceByShape(vertices);
-    isSelect && (selectRef.current = face);
-    faceRef.current = face
-    sceneRef.current.add(faceRef.current)
+    const face = generateShape(vertices);
+    const faceShape = new Shape(face);
+    console.log("face = ", face);
+    // 获取当前的图层
+    const currentLayer = managerRef.current.selectLayer(curLayerRef.current);
+    currentLayer.addObject(faceShape);
   };
 }

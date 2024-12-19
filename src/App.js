@@ -12,21 +12,33 @@ import { useBufferGeom } from "./hook/useBufferGeom";
 import { useLine } from "./hook/useLine";
 import { useInte } from "./hook/useInte";
 import { useDrawPolygon } from "./hook/useDrawPolygon";
-import { Button, Space } from "antd";
+import { Button, Space, Radio } from "antd";
 import RotateMap from "./comp/RotateMap";
 import { radToDeg } from "./utils/tool";
+
+const layers = [
+  {
+    label: "虚拟墙",
+    value: "wall",
+  },
+  {
+    label: "斜坡",
+    value: "slope",
+  },
+];
 
 function App() {
   const [topDown, setTopDown] = useState(true);
   const [rad, serRad] = useState(0);
   const [isDrag, setIsDrag] = useState(false);
   const [isWheel, setIsWheel] = useState(false);
+  const [curLayer, setCurLayer] = useState("wall");
   // useBase();
   // useZhenlie()
   // useBufferGeom()
   // useInte()
   // useLine()
-  useDrawPolygon({ topDown, rad, isDrag, isWheel });
+  useDrawPolygon({ topDown, rad, isDrag, isWheel, curLayer });
 
   const deg = useMemo(() => {
     return radToDeg(rad).toFixed(1);
@@ -65,6 +77,15 @@ function App() {
             {isWheel ? "取消缩放" : "缩放"}
           </Button>
         </Space>
+      </div>
+      <div className="layers">
+      <Radio.Group
+        options={layers}
+        onChange={({ target: { value } }) => setCurLayer(value)}
+        value={curLayer}
+        optionType="button"
+        buttonStyle="solid"
+      />
       </div>
       <RotateMap
         onSliderChange={(rad) => {
