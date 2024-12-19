@@ -6,6 +6,15 @@ import earcut from "earcut";
 import { Layer } from "../layer/Layer";
 import { LayerManager } from "../layer/LayerManager";
 import { Shape } from "../layer/Shape";
+import mapPng from "../assets/map.png";
+
+const gridHeight = 401;
+const gridWidth = 884;
+const cameraFov = 90;
+const planeSize = Math.max(gridWidth, gridHeight) * 2;
+const oriCameraHeight =
+  Math.max(gridWidth, gridHeight) /
+  (2 * Math.tan(THREE.MathUtils.degToRad(cameraFov / 2)));
 
 export function useDrawPolygon({ topDown, rad, isDrag, isWheel, curLayer }) {
   const sceneRef = useRef();
@@ -19,7 +28,6 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel, curLayer }) {
   const lineRef = useRef();
   const guiRef = useRef();
   const isTopDownRef = useRef();
-  const size = 500;
   const gridRef = useRef();
   const faceRef = useRef();
   const shapeRef = useRef();
@@ -53,7 +61,7 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel, curLayer }) {
   const initGrid = () => {
     const gridDivision = 50;
     const gridColor = 0x888888; // 网格颜色
-    gridRef.current = new THREE.GridHelper(size, gridDivision, gridColor);
+    gridRef.current = new THREE.GridHelper(planeSize, gridDivision, gridColor);
     sceneRef.current.add(gridRef.current);
     // 旋转到xz平面
     gridRef.current.rotation.x = Math.PI / 2;
@@ -135,8 +143,12 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel, curLayer }) {
         controlsRef.current = null;
       }
       if (cameraRef.current) {
-        cameraRef.current.position.set(0, 0, 500); // 设置在 Top-Down 视角
-        cameraRef.current.lookAt(0, 0, 0);
+        cameraRef.current.position.set(
+          gridWidth / 2,
+          gridHeight / 2,
+          oriCameraHeight
+        ); // 设置在 Top-Down 视角
+        cameraRef.current.lookAt(gridWidth / 2, gridHeight / 2, 0);
       }
     } else {
       if (!controlsRef.current) {
@@ -171,10 +183,36 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel, curLayer }) {
     const w = window.innerWidth;
     const h = window.innerHeight;
 
+    const textureLoader = new THREE.TextureLoader();
+    textureLoader.load(
+      mapPng, // 替换为你的 PNG 文件路径
+      (texture) => {
+        // 创建平面几何体
+        const geometry = new THREE.PlaneGeometry(gridWidth, gridHeight); // 平面大小为 2x2
+        const material = new THREE.MeshBasicMaterial({
+          map: texture,
+          transparent: true,
+        });
+
+        // 创建平面网格对象
+        const plane = new THREE.Mesh(geometry, material);
+        plane.position.set(gridWidth / 2, gridHeight / 2, 0); // 将平面放置到 z=0
+        sceneRef.current.add(plane);
+      },
+      undefined,
+      (error) => {
+        console.error("纹理加载失败：", error);
+      }
+    );
+
     // 创建相机
-    cameraRef.current = new THREE.PerspectiveCamera(75, w / h, 0.1, 10000);
-    cameraRef.current.position.set(0, 0, 500); // 设置在 Top-Down 视角
-    cameraRef.current.lookAt(0, 0, 0);
+    cameraRef.current = new THREE.PerspectiveCamera(cameraFov, w / h, 0.1, 10000);
+    cameraRef.current.position.set(
+      gridWidth / 2,
+      gridHeight / 2,
+      oriCameraHeight
+    ); // 设置在 Top-Down 视角
+    cameraRef.current.lookAt(gridWidth / 2, gridHeight / 2, 0);
 
     // 创建渲染器
     renderRef.current = new THREE.WebGLRenderer({ antialias: true });
@@ -183,7 +221,7 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel, curLayer }) {
     document.body.appendChild(renderRef.current.domElement);
 
     // 坐标系
-    const axesHelper = new THREE.AxesHelper(size / 2);
+    const axesHelper = new THREE.AxesHelper(planeSize / 2);
     sceneRef.current.add(axesHelper);
 
     // 添加光源
@@ -195,7 +233,7 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel, curLayer }) {
     managerRef.current = new LayerManager();
     // 创建辅助平面 (z=0)
     // 虚拟墙基准面
-    const wallGeometry = new THREE.PlaneGeometry(size, size);
+    const wallGeometry = new THREE.PlaneGeometry(planeSize, planeSize);
     const wallMaterial = new THREE.MeshBasicMaterial({
       color: 0xffffff,
       side: THREE.FrontSide,
@@ -208,7 +246,7 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel, curLayer }) {
     wallRef.current.addObject(wallShape);
     managerRef.current.addLayer(wallRef.current);
     // 斜坡基准面
-    const slopeGeometry = new THREE.PlaneGeometry(size, size);
+    const slopeGeometry = new THREE.PlaneGeometry(planeSize, planeSize);
     const slopeMaterial = new THREE.MeshBasicMaterial({
       color: 0xff00ff,
       side: THREE.FrontSide,
@@ -401,6 +439,7 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel, curLayer }) {
       if (lastIntersect.object.userData.isBasePlane) {
         const point = lastIntersect.point; // 获取交点
         // 添加点
+        console.log("point = ", point);
         const edgePoint = generatePoint(point);
         sceneRef.current.add(edgePoint);
         pointsRef.current.push(point);

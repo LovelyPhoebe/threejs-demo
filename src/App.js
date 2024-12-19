@@ -81,7 +81,9 @@ function App() {
       <div className="layers">
       <Radio.Group
         options={layers}
-        onChange={({ target: { value } }) => setCurLayer(value)}
+        onChange={(e) => {
+          setCurLayer(e.target.value)
+        }}
         value={curLayer}
         optionType="button"
         buttonStyle="solid"
