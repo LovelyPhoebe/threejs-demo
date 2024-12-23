@@ -79,15 +79,18 @@ function App() {
         </Space>
       </div>
       <div className="layers">
-      <Radio.Group
-        options={layers}
-        onChange={(e) => {
-          setCurLayer(e.target.value)
-        }}
-        value={curLayer}
-        optionType="button"
-        buttonStyle="solid"
-      />
+        <Radio.Group
+          options={layers}
+          onChange={(e) => {
+            console.log("e = ", e);
+            e.stopPropagation();
+            e.preventDefault();
+            setCurLayer(e.target.value);
+          }}
+          value={curLayer}
+          optionType="button"
+          buttonStyle="solid"
+        />
       </div>
       <RotateMap
         onSliderChange={(rad) => {

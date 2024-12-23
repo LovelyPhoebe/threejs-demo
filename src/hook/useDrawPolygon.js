@@ -8,6 +8,10 @@ import { LayerManager } from "../layer/LayerManager";
 import { Shape } from "../layer/Shape";
 import mapPng from "../assets/map.png";
 
+/**
+ * depthWrite !!!非常重要，所有在z为0平面显示的都要解决深度冲突
+ */
+
 const gridHeight = 401;
 const gridWidth = 884;
 const cameraFov = 90;
@@ -15,6 +19,8 @@ const planeSize = Math.max(gridWidth, gridHeight) * 2;
 const oriCameraHeight =
   Math.max(gridWidth, gridHeight) /
   (2 * Math.tan(THREE.MathUtils.degToRad(cameraFov / 2)));
+const cameraNear = oriCameraHeight / 2;
+const cameraFar = Math.sqrt(gridWidth ** 2 + gridHeight ** 2) + oriCameraHeight;
 
 export function useDrawPolygon({ topDown, rad, isDrag, isWheel, curLayer }) {
   const sceneRef = useRef();
@@ -191,22 +197,31 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel, curLayer }) {
         const geometry = new THREE.PlaneGeometry(gridWidth, gridHeight); // 平面大小为 2x2
         const material = new THREE.MeshBasicMaterial({
           map: texture,
-          transparent: true,
+          side: THREE.DoubleSide,
+          depthTest: false,  // 禁止深度测试
         });
 
         // 创建平面网格对象
-        const plane = new THREE.Mesh(geometry, material);
-        plane.position.set(gridWidth / 2, gridHeight / 2, 0); // 将平面放置到 z=0
-        sceneRef.current.add(plane);
+        const map = new THREE.Mesh(geometry, material);
+        map.userData.type = "map";
+        map.position.set(gridWidth / 2, gridHeight / 2, 0); // 将平面放置到 z=0
+        // 防止多次渲染
+        if (sceneRef.current.children.findIndex(obj => obj.userData.type === "map") === -1) {
+          sceneRef.current.add(map);
+        }
       },
       undefined,
       (error) => {
         console.error("纹理加载失败：", error);
       }
     );
-
     // 创建相机
-    cameraRef.current = new THREE.PerspectiveCamera(cameraFov, w / h, 0.1, 10000);
+    cameraRef.current = new THREE.PerspectiveCamera(
+      cameraFov,
+      gridWidth / gridHeight,
+      cameraNear,
+      cameraFar
+    );
     cameraRef.current.position.set(
       gridWidth / 2,
       gridHeight / 2,
@@ -235,10 +250,11 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel, curLayer }) {
     // 虚拟墙基准面
     const wallGeometry = new THREE.PlaneGeometry(planeSize, planeSize);
     const wallMaterial = new THREE.MeshBasicMaterial({
-      color: 0xffffff,
-      side: THREE.FrontSide,
+      // color: 0xffffff,
+      side: THREE.DoubleSide,
       transparent: true,
       opacity: 0,
+      depthTest: false
     });
     const isBasePlane = true;
     const wallMesh = new THREE.Mesh(wallGeometry, wallMaterial);
@@ -248,10 +264,11 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel, curLayer }) {
     // 斜坡基准面
     const slopeGeometry = new THREE.PlaneGeometry(planeSize, planeSize);
     const slopeMaterial = new THREE.MeshBasicMaterial({
-      color: 0xff00ff,
-      side: THREE.FrontSide,
+      // color: 0xff00ff,
+      side: THREE.DoubleSide,
       transparent: true,
       opacity: 0,
+      depthTest: false
     });
     const slopeMesh = new THREE.Mesh(slopeGeometry, slopeMaterial);
     const slopeShape = new Shape(slopeMesh, isBasePlane);
@@ -331,11 +348,6 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel, curLayer }) {
         mouseRef.current = new THREE.Vector3(point.x, point.y, 0);
         console.log("current click mouse = ", mouseRef.current);
         isDraggingRef.current = true;
-        geometry0Ref.current =
-          selectRef.current.geometry.attributes.position.clone();
-        console.log("geometry0Ref.current = ", geometry0Ref.current);
-        modifyGeometry.current =
-          selectRef.current.geometry.attributes.position.clone();
       }
     };
 
@@ -532,11 +544,11 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel, curLayer }) {
       side: THREE.DoubleSide, // 双面显示
       transparent: true,
       opacity: 0.5, // 设置透明度
+      depthTest: false
     });
 
     const shapeMesh = new THREE.Mesh(geometry, material);
     shapeMesh.userData.type = "face";
-
     return shapeMesh;
   };
 
