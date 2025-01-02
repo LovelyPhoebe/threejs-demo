@@ -16,14 +16,14 @@ class Observer {
 
 // 图层类，每个图层包含多个形状
 export class Layer {
-  constructor(name, scene) {
+  constructor({ name, color, scene}) {
     this.name = name;
     this.objects = []; // 图层内所有的图形对象
     this.visible = true; // 是否可见
     this.selected = false; // 是否选中
+    this.color = color;
     this.scene = scene;
     this.observer = new Observer();
-
     // 自动将新对象添加到场景
     this.subscribeToObjectChanges();
   }
@@ -38,6 +38,11 @@ export class Layer {
   getBasePlane() {
     const baseObj = this.objects.find((obj) => obj.isBasePlane);
     return baseObj?.mesh ?? null;
+  }
+
+  getFeatures() {
+    const objects = this.objects.filter((obj) => !obj.isBasePlane);
+    return objects.map((v) => v.mesh);
   }
 
   // 删除图形对象

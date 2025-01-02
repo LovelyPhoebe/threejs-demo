@@ -7,6 +7,7 @@ import { Layer } from "../layer/Layer";
 import { LayerManager } from "../layer/LayerManager";
 import { Shape } from "../layer/Shape";
 import mapPng from "../assets/map.png";
+import { message } from "antd";
 
 /**
  * depthWrite !!!非常重要，所有在z为0平面显示的都要解决深度冲突
@@ -15,11 +16,11 @@ import mapPng from "../assets/map.png";
 const gridHeight = 401;
 const gridWidth = 884;
 const cameraFov = 90;
-const planeSize = Math.max(gridWidth, gridHeight) * 2;
+const planeSize = (Math.max(gridWidth, gridHeight) / 100 + 1) * 200;
 const oriCameraHeight =
   Math.max(gridWidth, gridHeight) /
   (2 * Math.tan(THREE.MathUtils.degToRad(cameraFov / 2)));
-const cameraNear = oriCameraHeight / 2;
+const cameraNear = oriCameraHeight / 5;
 const cameraFar = Math.sqrt(gridWidth ** 2 + gridHeight ** 2) + oriCameraHeight;
 
 export function useDrawPolygon({ topDown, rad, isDrag, isWheel, curLayer }) {
@@ -31,7 +32,6 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel, curLayer }) {
   const controlsRef = useRef();
   const planeRef = useRef(); // 基准平面
   const pointsRef = useRef([]); // 存储多边形顶点
-  const lineRef = useRef();
   const guiRef = useRef();
   const isTopDownRef = useRef();
   const gridRef = useRef();
@@ -48,19 +48,16 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel, curLayer }) {
   const wallRef = useRef();
   const slopeRef = useRef();
   const managerRef = useRef();
-  const polygonColor = useRef();
-  const curLayerRef = useRef();
+  const currentLayerRef = useRef();
+  const snapFeatureRef = useRef();
 
   const changeCurLayer = (curLayer) => {
-    const currentLayer = managerRef.current?.selectLayer(curLayer);
-    planeRef.current = currentLayer?.getBasePlane() || null;
+    currentLayerRef.current = managerRef.current?.selectLayer(curLayer);
+    planeRef.current = currentLayerRef.current?.getBasePlane() || null;
   };
 
   useEffect(() => {
     changeCurLayer(curLayer);
-    curLayerRef.current = curLayer;
-    const color = curLayer === "wall" ? 0x00ffff : 0xff00ff;
-    polygonColor.current = color;
     selectRef.current = null;
   }, [curLayer]);
 
@@ -163,8 +160,9 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel, curLayer }) {
           cameraRef.current,
           renderRef.current?.domElement
         );
-        controlsRef.current.target.set(0, 0, 0);
+        controlsRef.current.target.set(gridWidth / 2, gridHeight / 2, 0);
         controlsRef.current.update();
+        cameraRef.current.lookAt(gridWidth / 2, gridHeight / 2, 0);
         controlsRef.current.addEventListener("change", () => {
           renderRef.current.render(sceneRef.current, cameraRef.current);
         });
@@ -198,7 +196,7 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel, curLayer }) {
         const material = new THREE.MeshBasicMaterial({
           map: texture,
           side: THREE.DoubleSide,
-          depthTest: false,  // 禁止深度测试
+          depthTest: false, // 禁止深度测试
         });
 
         // 创建平面网格对象
@@ -206,7 +204,11 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel, curLayer }) {
         map.userData.type = "map";
         map.position.set(gridWidth / 2, gridHeight / 2, 0); // 将平面放置到 z=0
         // 防止多次渲染
-        if (sceneRef.current.children.findIndex(obj => obj.userData.type === "map") === -1) {
+        if (
+          sceneRef.current.children.findIndex(
+            (obj) => obj.userData.type === "map"
+          ) === -1
+        ) {
           sceneRef.current.add(map);
         }
       },
@@ -243,8 +245,16 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel, curLayer }) {
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
     sceneRef.current.add(ambientLight);
 
-    wallRef.current = new Layer("wall", sceneRef.current);
-    slopeRef.current = new Layer("slope", sceneRef.current);
+    wallRef.current = new Layer({
+      name: "wall",
+      color: 0xffff00,
+      scene: sceneRef.current,
+    });
+    slopeRef.current = new Layer({
+      name: "slope",
+      color: 0xff00ff,
+      scene: sceneRef.current,
+    });
     managerRef.current = new LayerManager();
     // 创建辅助平面 (z=0)
     // 虚拟墙基准面
@@ -254,7 +264,7 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel, curLayer }) {
       side: THREE.DoubleSide,
       transparent: true,
       opacity: 0,
-      depthTest: false
+      depthTest: false,
     });
     const isBasePlane = true;
     const wallMesh = new THREE.Mesh(wallGeometry, wallMaterial);
@@ -268,7 +278,7 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel, curLayer }) {
       side: THREE.DoubleSide,
       transparent: true,
       opacity: 0,
-      depthTest: false
+      depthTest: false,
     });
     const slopeMesh = new THREE.Mesh(slopeGeometry, slopeMaterial);
     const slopeShape = new Shape(slopeMesh, isBasePlane);
@@ -281,7 +291,6 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel, curLayer }) {
     console.log("sceneRef.current", sceneRef.current.children);
     console.log("plane currrent = ", planeRef.current);
     initGrid();
-
     // 动画循环
     const animate = () => {
       requestAnimationFrame(animate);
@@ -292,7 +301,7 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel, curLayer }) {
     // 窗口大小调整
     window.onresize = () => {
       renderRef.current.setSize(window.innerWidth, window.innerHeight);
-      cameraRef.current.aspect = window.innerWidth / window.innerHeight;
+      cameraRef.current.aspect = gridWidth / gridHeight;
       cameraRef.current.updateProjectionMatrix();
     };
 
@@ -327,7 +336,10 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel, curLayer }) {
 
       // 缩放因子
       const delta = event.deltaY > 0 ? 0.95 : 1.05;
-      cameraRef.current.position.z *= delta;
+      const newHeight = cameraRef.current.position.z * delta;
+      if (newHeight >= cameraNear && newHeight <= cameraFar) {
+        cameraRef.current.position.z = newHeight;
+      }
     };
 
     const onMouseDown = (event) => {
@@ -353,9 +365,18 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel, curLayer }) {
 
     // 拖拽鼠标监听
     const onMouseMove = (event) => {
+      calculateRaycaster(event);
+      snapFeatureRef.current?.material.color.set(currentLayerRef.current.color);
+      // 滑动鼠标的时候判断是否滚动过某元素
+      const intersectMeshs = raycasterRef.current.intersectObjects(
+        currentLayerRef.current.getFeatures()
+      );
+      if (intersectMeshs[0]) {
+        snapFeatureRef.current = intersectMeshs[0]?.object;
+        snapFeatureRef.current.material.color.set(0xff0000);
+      }
       if (!selectRef.current) return;
       // 增加吸附和高亮
-      calculateRaycaster(event);
       const intersects = raycasterRef.current.intersectObject(planeRef.current);
       // 清除之前的鼠标点
       sceneRef.current.children = sceneRef.current.children.filter((obj) => {
@@ -438,10 +459,8 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel, curLayer }) {
       calculateRaycaster(event);
       // 是否点击到多边形元素
       // 判断点击的是图层基准面还是图层多边形
-      // 获取当前图层
-      const currentLayer = managerRef.current.selectLayer(curLayerRef.current);
       // 当前图层所有元素mesh
-      const meshArray = currentLayer.objects.map((obj) => obj.mesh);
+      const meshArray = currentLayerRef.current?.objects.map((obj) => obj.mesh);
       console.log("meshArray = ", meshArray);
       if (meshArray.length < 1) return;
       const intersects = raycasterRef.current.intersectObjects(meshArray);
@@ -467,6 +486,7 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel, curLayer }) {
       if (event.button === 2) {
         drawPolygon(pointsRef.current);
         pointsRef.current = [];
+        console.log("sceneref = ", sceneRef.current.children);
       }
     };
 
@@ -540,26 +560,28 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel, curLayer }) {
     // 创建一个Geometry并填充颜色
     const geometry = new THREE.ShapeGeometry(shape); // 创建面
     const material = new THREE.MeshBasicMaterial({
-      color: polygonColor.current,
+      color: currentLayerRef.current.color,
       side: THREE.DoubleSide, // 双面显示
       transparent: true,
       opacity: 0.5, // 设置透明度
-      depthTest: false
+      depthTest: false,
     });
 
     const shapeMesh = new THREE.Mesh(geometry, material);
     shapeMesh.userData.type = "face";
+    drawEdge(geometry);
     return shapeMesh;
   };
 
   const drawEdge = (shapeGeomtry) => {
     // 创建边界
-    const edge = new THREE.EdgesGeometry(shapeGeomtry);
-    lineRef.current = new THREE.Line(
-      edge,
+    const edgeGeometry = new THREE.EdgesGeometry(shapeGeomtry);
+    const edgeMesh = new THREE.Line(
+      edgeGeometry,
       new THREE.LineBasicMaterial({ color: 0xffffff })
     );
-    sceneRef.current.add(lineRef.current);
+    edgeMesh.userData.type = "edge";
+    sceneRef.current.add(edgeMesh);
   };
 
   const generatePoint = (vertex, isPointer) => {
@@ -575,43 +597,47 @@ export function useDrawPolygon({ topDown, rad, isDrag, isWheel, curLayer }) {
     return pointMesh;
   };
 
-  const drawLine = (vertices) => {
+  const generateLine = (vertices) => {
     if (vertices.length < 2) return;
 
-    const lineMaterial = new THREE.LineBasicMaterial({ color: "0xffffff" });
+    const lineMaterial = new THREE.LineBasicMaterial({
+      color: currentLayerRef.current.color,
+      linewidth: 10,
+    });
     const planeVerticles = vertices.map(
       (vertice) => new THREE.Vector2(vertice.x, vertice.y)
     );
     const lineGeometry = new THREE.BufferGeometry().setFromPoints(
       planeVerticles
     );
-    lineRef.current = new THREE.Line(lineGeometry, lineMaterial);
-    sceneRef.current.add(lineRef.current);
+    const line = new THREE.Line(lineGeometry, lineMaterial);
+    line.userData.type = "line";
+    return line;
   };
 
   // 绘制多边形
   const drawPolygon = (vertices) => {
-    // 清除之前的多边形
-    // sceneRef.current.children = sceneRef.current.children.filter(
-    //   (obj) => obj.type !== "Mesh" && obj.type !== "Line"
-    // );
-    // 清除之前的点和线
+    // 清除之前的辅助点和边界
     sceneRef.current.children = sceneRef.current.children.filter(
-      (obj) => obj.userData.type !== "point" && obj.type !== "Line"
+      (obj) => obj.userData.type !== "point" && obj.userData.type !== "edge"
     );
     // 绘制点
     vertices.forEach((vertex) => {
       const pointMesh = generatePoint(vertex);
       sceneRef.current.add(pointMesh);
     });
+    // 两个点则绘制线
+    if (vertices.length === 2) {
+      const line = generateLine(vertices);
+      const lineShape = new Shape(line);
+      currentLayerRef.current.addObject(lineShape);
+    }
     // 创建面的几何体
     if (vertices.length < 3) return;
     //   drawFaceByEarCut(vertices);
     const face = generateShape(vertices);
     const faceShape = new Shape(face);
     console.log("face = ", face);
-    // 获取当前的图层
-    const currentLayer = managerRef.current.selectLayer(curLayerRef.current);
-    currentLayer.addObject(faceShape);
+    currentLayerRef.current.addObject(faceShape);
   };
 }
